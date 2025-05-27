@@ -4,6 +4,7 @@ use axum::{
     Json, Router,
     extract::{Query, State},
     http::{StatusCode, request::Parts},
+    middleware::{self, Next},
     response::{
         Response,
         sse::{Event, KeepAlive, Sse},
@@ -82,12 +83,26 @@ async fn post_event_handler(
     Ok(StatusCode::ACCEPTED)
 }
 
+async fn sse_session_id_middleware(
+    mut request: axum::http::Request<axum::body::Body>,
+    next: Next,
+) -> Response<axum::body::Body> {
+    let session_id = session_id();
+    request.extensions_mut().insert(session_id.clone());
+    let mut response = next.run(request).await;
+    response.extensions_mut().insert(session_id.clone());
+    response
+}
+
 async fn sse_handler(
     State(app): State<App>,
     mut parts: Parts,
 ) -> Result<Sse<impl Stream<Item = Result<Event, io::Error>>>, Response<String>> {
-    let session = session_id();
-    parts.extensions.insert(session.clone());
+    let session = parts
+        .extensions
+        .remove::<SessionId>()
+        .expect("session id not found");
+
     tracing::info!(%session, ?parts, "sse connection");
     use tokio_stream::{StreamExt, wrappers::ReceiverStream};
     use tokio_util::sync::PollSender;
@@ -266,7 +281,10 @@ impl SseServer {
             config.sse_keep_alive.unwrap_or(DEFAULT_AUTO_PING_INTERVAL),
         );
         let router = Router::new()
-            .route(&config.sse_path, get(sse_handler))
+            .route(
+                &config.sse_path,
+                get(sse_handler).layer(middleware::from_fn(sse_session_id_middleware)),
+            )
             .route(&config.post_path, post(post_event_handler))
             .with_state(app);
 
