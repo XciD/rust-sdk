@@ -84,9 +84,10 @@ async fn post_event_handler(
 
 async fn sse_handler(
     State(app): State<App>,
-    parts: Parts,
+    mut parts: Parts,
 ) -> Result<Sse<impl Stream<Item = Result<Event, io::Error>>>, Response<String>> {
     let session = session_id();
+    parts.extensions.insert(session.clone());
     tracing::info!(%session, ?parts, "sse connection");
     use tokio_stream::{StreamExt, wrappers::ReceiverStream};
     use tokio_util::sync::PollSender;
