@@ -76,6 +76,7 @@ async fn post_event_handler(
             .clone()
     };
     message.insert_extension(parts);
+    message.insert_extension(SessionId::from(session_id.as_str()));
     if tx.send(message).await.is_err() {
         tracing::error!("send message error");
         return Err(StatusCode::GONE);
