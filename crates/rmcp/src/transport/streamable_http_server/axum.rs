@@ -24,7 +24,10 @@ use tracing::Instrument;
 use super::session::{EventId, SessionHandle, SessionWorker, StreamableHttpMessageReceiver};
 use crate::{
     RoleServer, Service,
-    model::ClientJsonRpcMessage,
+    model::{
+        ClientJsonRpcMessage, ClientRequest, CloseRequest, CloseRequestMethod, JsonRpcRequest,
+        JsonRpcVersion2_0, NumberOrString,
+    },
     transport::common::{
         axum::{DEFAULT_AUTO_PING_INTERVAL, SessionId, session_id},
         http_header::{HEADER_LAST_EVENT_ID, HEADER_SESSION_ID},
@@ -90,6 +93,7 @@ async fn post_handler(
         };
         // inject request part
         message.insert_extension(parts);
+        message.insert_extension(SessionId::from(session_id));
         match &message {
             ClientJsonRpcMessage::Request(_) | ClientJsonRpcMessage::BatchRequest(_) => {
                 let receiver = handle.establish_request_wise_channel().await.map_err(|e| {
@@ -136,6 +140,7 @@ async fn post_handler(
         let session_id = session_id();
         // inject request part
         message.insert_extension(parts);
+        message.insert_extension(SessionId::from(session_id.clone()));
         let (session, transport) =
             super::session::create_session(session_id.clone(), Default::default());
         let Ok(_) = app.transport_tx.send(transport) else {
@@ -230,6 +235,22 @@ async fn delete_handler(
             sm.remove(session_id)
                 .ok_or((StatusCode::NOT_FOUND, "session not found").into_response())?
         };
+
+        // Send close request before closing the session
+        let mut close_request = ClientJsonRpcMessage::Request(JsonRpcRequest {
+            jsonrpc: JsonRpcVersion2_0,
+            id: NumberOrString::Number(0),
+            request: ClientRequest::CloseRequest(CloseRequest {
+                method: CloseRequestMethod::default(),
+                extensions: Default::default(),
+            }),
+        });
+        close_request.insert_extension(SessionId::from(session_id));
+
+        if let Err(e) = session.push_message(close_request, None).await {
+            tracing::warn!(session_id, "failed to send close request: {}", e);
+        }
+
         session.close().await.map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,

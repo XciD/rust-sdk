@@ -66,6 +66,7 @@ variant_extension! {
         UnsubscribeRequest
         CallToolRequest
         ListToolsRequest
+        CloseRequest
     }
 }
 

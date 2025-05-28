@@ -1038,6 +1038,9 @@ macro_rules! ts_union {
     };
 }
 
+const_string!(CloseRequestMethod = "close");
+pub type CloseRequest = RequestNoParam<CloseRequestMethod>;
+
 ts_union!(
     export type ClientRequest =
     | PingRequest
@@ -1052,7 +1055,8 @@ ts_union!(
     | SubscribeRequest
     | UnsubscribeRequest
     | CallToolRequest
-    | ListToolsRequest;
+    | ListToolsRequest
+    | CloseRequest;
 );
 
 ts_union!(

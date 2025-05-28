@@ -21,6 +21,9 @@ impl<H: ServerHandler> Service<RoleServer> for H {
             ClientRequest::PingRequest(_request) => {
                 self.ping(context).await.map(ServerResult::empty)
             }
+            ClientRequest::CloseRequest(_request) => {
+                self.close(context).await.map(ServerResult::empty)
+            }
             ClientRequest::CompleteRequest(request) => self
                 .complete(request.params, context)
                 .await
@@ -112,6 +115,12 @@ pub trait ServerHandler: Sized + Send + Sync + 'static {
             context.peer.set_peer_info(request);
         }
         std::future::ready(Ok(self.get_info()))
+    }
+    fn close(
+        &self,
+        context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<(), McpError>> + Send + '_ {
+        std::future::ready(Ok(()))
     }
     fn complete(
         &self,
