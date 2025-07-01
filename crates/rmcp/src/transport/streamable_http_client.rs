@@ -275,7 +275,12 @@ impl<C: StreamableHttpClient> Worker for StreamableHttpClientWorker<C> {
         let _ = responder.send(Ok(()));
         let (message, session_id) = self
             .client
-            .post_message(config.uri.clone(), initialize_request, None, None)
+            .post_message(
+                config.uri.clone(),
+                initialize_request,
+                None,
+                config.auth_header.clone(),
+            )
             .await
             .map_err(WorkerQuitReason::fatal_context("send initialize request"))?
             .expect_initialized::<Self::Error>()
@@ -300,10 +305,12 @@ impl<C: StreamableHttpClient> Worker for StreamableHttpClientWorker<C> {
             let client = self.client.clone();
             let session_id = session_id.clone();
             let url = config.uri.clone();
+            let auth_header = self.config.auth_header.clone();
             tokio::spawn(async move {
                 ct.cancelled().await;
-                let delete_session_result =
-                    client.delete_session(url, session_id.clone(), None).await;
+                let delete_session_result = client
+                    .delete_session(url, session_id.clone(), auth_header)
+                    .await;
                 match delete_session_result {
                     Ok(_) => {
                         tracing::info!(session_id = session_id.as_ref(), "delete session success")
@@ -332,7 +339,7 @@ impl<C: StreamableHttpClient> Worker for StreamableHttpClientWorker<C> {
                 config.uri.clone(),
                 initialized_notification.message,
                 session_id.clone(),
-                None,
+                config.auth_header.clone(),
             )
             .await
             .map_err(WorkerQuitReason::fatal_context(
@@ -352,7 +359,12 @@ impl<C: StreamableHttpClient> Worker for StreamableHttpClientWorker<C> {
         if let Some(session_id) = &session_id {
             match self
                 .client
-                .get_stream(config.uri.clone(), session_id.clone(), None, None)
+                .get_stream(
+                    config.uri.clone(),
+                    session_id.clone(),
+                    None,
+                    config.auth_header.clone(),
+                )
                 .await
             {
                 Ok(stream) => {
@@ -419,7 +431,12 @@ impl<C: StreamableHttpClient> Worker for StreamableHttpClientWorker<C> {
                     let WorkerSendRequest { message, responder } = send_request;
                     let response = self
                         .client
-                        .post_message(config.uri.clone(), message, session_id.clone(), None)
+                        .post_message(
+                            config.uri.clone(),
+                            message,
+                            session_id.clone(),
+                            config.auth_header.clone(),
+                        )
                         .await;
                     let send_result = match response {
                         Err(e) => Err(e),
@@ -498,6 +515,7 @@ pub struct StreamableHttpClientTransportConfig {
     pub channel_buffer_capacity: usize,
     /// if true, the transport will not require a session to be established
     pub allow_stateless: bool,
+    pub auth_header: Option<String>,
 }
 
 impl StreamableHttpClientTransportConfig {
@@ -516,6 +534,7 @@ impl Default for StreamableHttpClientTransportConfig {
             retry_config: Arc::new(ExponentialBackoff::default()),
             channel_buffer_capacity: 16,
             allow_stateless: true,
+            auth_header: None,
         }
     }
 }
